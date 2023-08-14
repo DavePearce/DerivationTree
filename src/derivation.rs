@@ -82,7 +82,7 @@ where F:Copy+Fn(usize,&[usize],&DerivationTree<T>)->Option<bool>,
                 None
             },
             None => {
-                // Continue derivationting!
+                // Continue deriving!
                 todo!()
             }
         }
