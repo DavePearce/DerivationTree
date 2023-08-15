@@ -4,7 +4,7 @@ use crate::{DefaultDerivationHeuristic,DerivationHeuristic,DerivationTree,Deriva
 /// Responsible for exploring the search space of assignments for a
 /// given term.
 pub struct Derivation<F,T,H = DefaultDerivationHeuristic<T>>
-where F:Copy+Fn(usize,&[usize],&DerivationTree<T>)->Option<bool>,
+where F:Fn(&T)->Option<bool>,
       T:DerivationTerm,
       H:DerivationHeuristic<T>
 {
@@ -21,10 +21,9 @@ where F:Copy+Fn(usize,&[usize],&DerivationTree<T>)->Option<bool>,
     query: F    
 }
 
-impl<F,T,H> Derivation<F,T,H>
-where F:Copy+Fn(usize,&[usize],&DerivationTree<T>)->Option<bool>,
-      T:DerivationTerm,
-      H:Default+DerivationHeuristic<T>
+impl<F,T> Derivation<F,T,DefaultDerivationHeuristic<T>>
+where F:Fn(&T)->Option<bool>,
+      T:DerivationTerm
 {
     pub fn new(mut term: T, query: F) -> Self {
         let n = term.domain();
@@ -45,14 +44,14 @@ where F:Copy+Fn(usize,&[usize],&DerivationTree<T>)->Option<bool>,
         // Construct worklist
         let worklist = vec![(0,assignments)];
         // Construct heuristic
-        let heuristic = H::default();
+        let heuristic = DefaultDerivationHeuristic::default();
         // Begin!
         Derivation{tree, heuristic, query, worklist: worklist.into()}
     }
 }
 
 impl<F,T,H> Derivation<F,T,H>
-where F:Copy+Fn(usize,&[usize],&DerivationTree<T>)->Option<bool>,
+where F:Fn(&T)->Option<bool>,
       T:DerivationTerm,
       H:DerivationHeuristic<T>
 {
@@ -68,11 +67,11 @@ where F:Copy+Fn(usize,&[usize],&DerivationTree<T>)->Option<bool>,
     /// reached (and, if so, whether we found what we're looking for).
     /// If so, that is returned.  Otherwise, we continue derivationting.
     pub fn split(&mut self) -> Option<usize>
-    where F:Copy+Fn(usize,&[usize],&DerivationTree<T>)->Option<bool> {
+    where F:Fn(&T)->Option<bool> {
         // Pull off the next term
         let (next,assignments) = self.worklist.pop_front().unwrap();
         // Run the derivation functions
-        match (self.query)(next,&assignments,&self.tree) {
+        match (self.query)(self.tree.get(next)) {
             Some(true) => {
                 Some(next)
             }
@@ -90,7 +89,7 @@ where F:Copy+Fn(usize,&[usize],&DerivationTree<T>)->Option<bool>,
 }
 
 impl<F,T,H> Iterator for Derivation<F,T,H>
-where F:Copy+Fn(usize,&[usize],&DerivationTree<T>)->Option<bool>,
+where F:Fn(&T)->Option<bool>,
       T:DerivationTerm,
       H:DerivationHeuristic<T>    
 {

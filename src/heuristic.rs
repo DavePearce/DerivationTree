@@ -25,3 +25,9 @@ impl<T:PartialEq> DerivationHeuristic<T> for AssignmentHeuristic<T> {
         todo!()
     }
 }
+
+impl<T:PartialEq> Default for AssignmentHeuristic<T> {
+    fn default() -> Self {
+        Self{dummy: PhantomData}
+    }
+}
