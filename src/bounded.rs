@@ -1,4 +1,3 @@
-
 pub enum BoundedOption<T> {
     /// A given item was found in `n` steps.
     Some(usize,T),

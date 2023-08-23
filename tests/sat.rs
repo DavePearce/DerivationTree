@@ -1,4 +1,35 @@
+use std::cmp;
 use derivation_tree::{DefaultDerivationHeuristic,Derivation,DerivationTerm};
+
+#[derive(Clone,Copy,Debug,PartialEq)]
+struct Term {
+    index: usize
+}
+
+impl Term {
+    const fn new(var: usize) -> Self {
+        Self{index: var * 2}
+    }
+    /// Get the variable represented by this term.
+    fn var(self) -> usize {
+        self.index / 2
+    }
+    /// Negate this term.
+    fn negate(mut self) -> Self {
+        if (self.index%2) == 0 {
+            self.index += 1;
+        } else {
+            self.index -= 1;
+        }
+        self
+    }
+}
+
+impl From<usize> for Term {
+    fn from(var: usize) -> Self {
+        Self{index: var * 2}
+    }
+}
 
 /// Represents a sequence of one or more variables disjuncted
 /// together.  Each variable can be negated or not.  For example, we
@@ -7,7 +38,37 @@ use derivation_tree::{DefaultDerivationHeuristic,Derivation,DerivationTerm};
 struct Clause {
     /// Identifies which are used in the clause, and their status
     /// where negative values represent negated variables.
-    terms: Vec<isize>
+    terms: Vec<Term>
+}
+
+const CLAUSE_FALSE : Clause = Clause{terms: Vec::new()};
+
+impl Clause {    
+    fn domain(&self) -> usize {
+        let mut d = 0;
+        for t in &self.terms { d = cmp::max(t.var(),d); }
+        d
+    }
+    fn num_uses(&self, var: usize) -> usize {
+        let mut r = 0;
+        for t in &self.terms {
+            if t.var() == var { r += 1; }
+        }
+        r
+    }
+    fn substitute(&self, var: Term) -> Option<Self> {
+        if self.terms.contains(&var) {
+            // Indicates this clause evaluates to true            
+            return None;
+        }
+        let mut terms = self.terms.clone();
+        // Remove negated variable var from clause (as this now
+        // evaluates to false).
+        let nvar = var.negate();
+        terms.retain(|v| *v != nvar);
+        // Done
+        Some(Self{terms})
+    }
 }
 
 /// Represents a formula in conjuncted normal form.  That is, a set of
@@ -15,24 +76,68 @@ struct Clause {
 /// example, `(a||b) && (!b||c)` is a formula composed of two clauses
 /// (i.e. `a||b` and `!b||c`).
 #[derive(Clone,Debug,PartialEq)]
-struct Formula {
-    clauses: Vec<Clause>
-}
+struct Formula { clauses: Vec<Clause> }
 
 impl Formula {
+    /// Check whether the formula is `true` or `false`.  Observe that
+    /// it maybe neither at this stage (in which case `None` is
+    /// returned).
+    fn eval(&self) -> Option<bool> {
+        if self.clauses.len() == 0 {
+            Some(true)
+        } else if self.clauses.len() == 1 && self.clauses[0] == CLAUSE_FALSE {
+            Some(false)
+        } else {
+            None
+        }
+    }
+    fn domain(&self) -> usize {
+        let mut d = 0;
+        for c in &self.clauses { d = cmp::max(c.domain(),d); }
+        d
+    }
+    fn num_uses(&self, var: usize) -> usize {
+        let mut r = 0;
+        for c in &self.clauses { r += c.num_uses(var); }
+        r
+    }
+    fn substitute(&self, var: Term) -> Self {
+        let mut clauses = Vec::new();
+        //
+        for c in &self.clauses {
+            match c.substitute(var) {
+                Some(n) if n == CLAUSE_FALSE => {
+                    // Indicates subsitution reduced clause to false.
+                    // Therefore, entire formula is false.
+                    todo!();
+                }
+                Some(n) => {
+                    // Indicates substitution did not yet reduce
+                    // clause to terminal, therefore it continues.
+                    clauses.push(n);
+                }
+                None => {
+                    // Indicates substitution reduced clause to true.
+                    // Therefore, it can be dropped entirely.
+                }
+            }            
+        }
+        //
+        Self{clauses}
+    }
     // Use the derivation tree to determine whether or not a formula
     // is satisfiable.
     fn sat(self) -> bool {
-        let dt = Derivation::new(Term::Node(self), |t:&Term| t.sat_query());
+        let dt = Derivation::new(self, |f:&Formula| f.eval());
         // If a single sat instance is found, then we know its sat.
-        for (_,_) in dt { return true; }
+        for _ in dt { return true; }
         // Otherwise, its unsat.
 	return false;
     }
 }
 
-impl From<Vec<Vec<isize>>> for Formula {
-    fn from(clauses: Vec<Vec<isize>>) -> Self {
+impl From<Vec<Vec<Term>>> for Formula {
+    fn from(clauses: Vec<Vec<Term>>) -> Self {
         let mut res = Vec::new();
         for c in clauses {
             res.push(Clause{terms: c});
@@ -41,47 +146,25 @@ impl From<Vec<Vec<isize>>> for Formula {
     }
 }
 
-// =============================================================================
-// Derivation
-// =============================================================================
-
-#[derive(Clone,Debug,PartialEq)]
-enum Term {
-    // Internal tree node, representing an ongoing derivation.
-    Node(Formula),
-    // Leaf node of the tree, representing the end of a branch which
-    // reduced to either `true` or `false`.
-    Leaf(bool)
-}
-
-impl Term {
-    /// Query looking for satisfiable instances.  Thus, an term which
-    /// has reduced to `true` is a match.
-    fn sat_query(&self) -> Option<bool> {
-        match self {
-            Term::Node(_) => None,
-            Term::Leaf(b) => Some(*b)
-        }
-    }
-    /// Query looking for unsatisfiable instances.  Thus, an term
-    /// which has reduced to `false` is a match.
-    fn unsat_query(&self) -> Option<bool> {
-        match self {
-            Term::Node(_) => None,
-            Term::Leaf(b) => Some(!*b)
-        }
-    }    
-}
-
-impl DerivationTerm for Term {
+impl DerivationTerm for Formula {
     fn domain(&self) -> usize {
-        todo!()
+        let mut d = 0;
+        for c in &self.clauses { d = cmp::max(c.domain(),d); }
+        d        
     }
     fn num_uses(&self, var: usize) -> usize {
-        todo!()
+        let mut r = 0;
+        for c in &self.clauses { r += c.num_uses(var); }
+        r        
     }
     fn split(&self, var: usize) -> (Self,Self) {
-        todo!()
+        let term = Term::from(var);
+        // positive
+        let l = self.substitute(term);
+        // negative
+        let r = self.substitute(term.negate());        
+        // Done
+        (l,r)
     }
 }
 
@@ -89,10 +172,40 @@ impl DerivationTerm for Term {
 // Tests
 // =============================================================================
 
+const A : Term = Term::new(0);
+const B : Term = Term::new(1);
+const C : Term = Term::new(2);
+const D : Term = Term::new(3);
+
 #[test]
 fn test_01() {
-    // a||b
-    let f1 = Formula::from(vec![vec![0,1]]);
+    // a || b
+    let f1 = Formula::from(vec![vec![A,B]]);
     //
     assert!(f1.sat());
+}
+
+#[test]
+fn test_02() {
+    // a || !a
+    let f1 = Formula::from(vec![vec![A,A.negate()]]);
+    //
+    assert!(f1.sat());
+}
+
+#[test]
+fn test_03() {
+    // a && b
+    let f1 = Formula::from(vec![vec![A],vec![B]]);
+    //
+    assert!(f1.sat());
+}
+
+
+#[test]
+fn test_04() {
+    // a && !a    
+    let f1 = Formula::from(vec![vec![A],vec![A.negate()]]);
+    //
+    assert!(!f1.sat());
 }

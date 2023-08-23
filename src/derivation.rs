@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use crate::{BoundedOption};
 use crate::{DefaultDerivationHeuristic,DerivationHeuristic,DerivationTree,DerivationTerm};
 
 /// Responsible for exploring the search space of assignments for a
@@ -13,7 +14,7 @@ where F:Fn(&T)->Option<bool>,
     /// of each element identifies a term within the derivation tree,
     /// whilst the second field identifies the current assignment used
     /// to derive that term.
-    worklist: VecDeque<(usize,Vec<usize>)>,
+    worklist: VecDeque<usize>,
     /// Heuristic responsible for deriving individual terms.
     heuristic: H,
     /// Function for determining when a terminal and/or goal state is
@@ -42,7 +43,7 @@ where F:Fn(&T)->Option<bool>,
         // Construct proof
         let tree = DerivationTree::new(term);
         // Construct worklist
-        let worklist = vec![(0,assignments)];
+        let worklist = vec![0];
         // Construct heuristic
         let heuristic = DefaultDerivationHeuristic::default();
         // Begin!
@@ -61,15 +62,49 @@ where F:Fn(&T)->Option<bool>,
         self.worklist.len()
     }
 
+    /// Perform a bounded search for the next matching derived term.
+    /// This continues searching unexplored paths until either: a
+    /// match is found; there is nothing left to explore; or, the step
+    /// bound is exhausted.
+    fn internal_next_for(&mut self, n: usize) -> BoundedOption<usize> {
+        let mut m = 0;
+        //
+        while m < n && self.worklist.len() > 0 {
+            m += 1;
+            match self.split() {
+                Some(term) => {
+                    // Indicates we identified a derived term matching
+                    // the given query.
+                    return BoundedOption::Some(m,term);
+                }
+                None => {
+                    // Indicates either we didn't hit a terminal node
+                    // yet, or we hit one which did not match the
+                    // query.  Therefore, just continue.
+                }
+            }
+        }
+        // Check the outcome.
+        if m == n {
+            // We used up the maximum number of steps permitted for
+            // this method.
+            BoundedOption::OutOfResource
+        } else {
+            // We completed searching the space, and did not find any
+            // further matches.
+            BoundedOption::None(m)
+        }        
+    }
+    
     /// Continue searching along the current branch.  This assumes
     /// there is at least one item remaining in the worklist.  We
     /// apply the query function to check whether a terminal node is
     /// reached (and, if so, whether we found what we're looking for).
     /// If so, that is returned.  Otherwise, we continue derivationting.
-    pub fn split(&mut self) -> Option<usize>
+    fn split(&mut self) -> Option<usize>
     where F:Fn(&T)->Option<bool> {
         // Pull off the next term
-        let (next,assignments) = self.worklist.pop_front().unwrap();
+        let next = self.worklist.pop_front().unwrap();
         // Run the derivation functions
         match (self.query)(self.tree.get(next)) {
             Some(true) => {
@@ -81,28 +116,35 @@ where F:Fn(&T)->Option<bool>,
                 None
             },
             None => {
-                // Continue deriving!
-                todo!()
+                // Continue deriving by splitting this term into one
+                // or more subterms.
+                let r = self.heuristic.apply(next,&mut self.tree);
+                for i in r {
+                    self.worklist.push_back(i);
+                }
+                None
             }
         }
     }
 }
 
-impl<F,T,H> Iterator for Derivation<F,T,H>
+impl<'a,F,T,H> Iterator for Derivation<F,T,H>
 where F:Fn(&T)->Option<bool>,
-      T:DerivationTerm,
+      T:Clone+DerivationTerm,
       H:DerivationHeuristic<T>    
 {
-    type Item = (T,Vec<usize>);
+    type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        todo!()
-        // loop {
-        //     match self.internal_next_for(usize::MAX) {
-        //         BoundedOption::Some(_,item) => { return Some(item);}
-        //         BoundedOption::None(_) => {return None;}
-        //         BoundedOption::OutOfResource => {}
-        //     }
-        // }
+        loop {
+            match self.internal_next_for(usize::MAX) {
+                BoundedOption::Some(_,index) => {
+                    let item : T = self.tree.get(index).clone();
+                    return Some(item);
+                }
+                BoundedOption::None(_) => {return None;}
+                BoundedOption::OutOfResource => {}
+            }
+        }
     }
 }
