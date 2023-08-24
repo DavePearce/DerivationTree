@@ -7,13 +7,9 @@ struct Term {
 }
 
 impl Term {
-    const fn new(var: usize) -> Self {
-        Self{index: var * 2}
-    }
+    const fn new(var: usize) -> Self { Self{index: var * 2} }
     /// Get the variable represented by this term.
-    fn var(self) -> usize {
-        self.index / 2
-    }
+    fn var(self) -> usize { self.index / 2 }
     /// Negate this term.
     fn negate(mut self) -> Self {
         if (self.index%2) == 0 {
@@ -22,12 +18,6 @@ impl Term {
             self.index -= 1;
         }
         self
-    }
-}
-
-impl From<usize> for Term {
-    fn from(var: usize) -> Self {
-        Self{index: var * 2}
     }
 }
 
@@ -46,7 +36,7 @@ const CLAUSE_FALSE : Clause = Clause{terms: Vec::new()};
 impl Clause {    
     fn domain(&self) -> usize {
         let mut d = 0;
-        for t in &self.terms { d = cmp::max(t.var(),d); }
+        for t in &self.terms { d = cmp::max(t.var()+1,d); }
         d
     }
     fn num_uses(&self, var: usize) -> usize {
@@ -57,10 +47,8 @@ impl Clause {
         r
     }
     fn substitute(&self, var: Term) -> Option<Self> {
-        if self.terms.contains(&var) {
-            // Indicates this clause evaluates to true            
-            return None;
-        }
+        // Check whether clause evaluates to true
+        if self.terms.contains(&var) { return None; }
         let mut terms = self.terms.clone();
         // Remove negated variable var from clause (as this now
         // evaluates to false).
@@ -109,7 +97,7 @@ impl Formula {
                 Some(n) if n == CLAUSE_FALSE => {
                     // Indicates subsitution reduced clause to false.
                     // Therefore, entire formula is false.
-                    todo!();
+                    return Self{clauses:vec![CLAUSE_FALSE]};
                 }
                 Some(n) => {
                     // Indicates substitution did not yet reduce
@@ -158,7 +146,7 @@ impl DerivationTerm for Formula {
         r        
     }
     fn split(&self, var: usize) -> (Self,Self) {
-        let term = Term::from(var);
+        let term = Term::new(var);
         // positive
         let l = self.substitute(term);
         // negative
@@ -201,11 +189,26 @@ fn test_03() {
     assert!(f1.sat());
 }
 
-
 #[test]
 fn test_04() {
     // a && !a    
     let f1 = Formula::from(vec![vec![A],vec![A.negate()]]);
+    //
+    assert!(!f1.sat());
+}
+
+#[test]
+fn test_05() {
+    // !a||b && !a||!b    
+    let f1 = Formula::from(vec![vec![A.negate(),B],vec![A.negate(),B.negate()]]);
+    //
+    assert!(f1.sat());
+}
+
+#[test]
+fn test_06() {
+    // a && !a||b && !a||!b    
+    let f1 = Formula::from(vec![vec![A],vec![A.negate(),B],vec![A.negate(),B.negate()]]);
     //
     assert!(!f1.sat());
 }
