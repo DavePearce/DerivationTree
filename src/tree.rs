@@ -20,13 +20,20 @@ impl<T:PartialEq> DerivationTree<T> {
             parents: vec![usize::MAX]
         }
     }
+    /// Get the number of nodes currently in this tree.
+    pub fn len(&self) -> usize {
+        self.terms.len()
+    }
     /// Get the term at the `ith` index of this split tree.
     pub fn get(&self, index: usize) -> &T {
         &self.terms[index]
     }
     /// Push a new term derived from a given parent onto the tree.
-    pub fn push(&self, term: T, parent: usize) -> usize {
-        todo!()
+    pub fn push(&mut self, term: T, parent: usize) -> usize {
+        let index = self.terms.len();
+        self.terms.push(term);
+        self.parents.push(parent);
+        index
     }
     /// Attempt to determine whether or not the term at a given index
     /// is a duplicate of one of its ancestors.  In principle, this
